@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>キャッシュ・ラボ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="../shared/lab.css">
+<style>
+/* Layout: 操作台 — 左にCPU(プログラム/レジスタ)、中央にキャッシュ本体、右に計測器(統計/ログ)。下段にメモリマップと学習メモ */
+:root{
+  --bg:#e9edf1; --panel:#fbfcfd; --sunk:#f1f4f7; --ink:#17202b; --muted:#5a6676; --line:#d3dae2;
+  --accent:#a8561f; --accent-ink:#fff;
+  --tag:#3466ad; --idx:#a8561f; --off:#5f7d2c;
+  --hit:#26805a; --hit-bg:#dcefe5; --miss:#bf3434; --miss-bg:#f8dfdd;
+  --c-comp:#6a7a92; --c-cap:#c07a10; --c-conf:#bf3434;
+  --cached:#d6e3f3; --dirty:#f5dcc7;
+  --f-body:"IBM Plex Sans JP","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#101419; --panel:#171d24; --sunk:#12171d; --ink:#e3e8ee; --muted:#8e99a7; --line:#2a333d;
+  --accent:#e08847; --accent-ink:#1a0f06;
+  --tag:#74a2e8; --idx:#e08847; --off:#a2c062;
+  --hit:#4fc08a; --hit-bg:#173327; --miss:#f06c6c; --miss-bg:#3a1c1e;
+  --c-comp:#94a3b8; --c-cap:#e8a73e; --c-conf:#f06c6c;
+  --cached:#1f3350; --dirty:#4a2f1a; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#101419; --panel:#171d24; --sunk:#12171d; --ink:#e3e8ee; --muted:#8e99a7; --line:#2a333d;
+  --accent:#e08847; --accent-ink:#1a0f06;
+  --tag:#74a2e8; --idx:#e08847; --off:#a2c062;
+  --hit:#4fc08a; --hit-bg:#173327; --miss:#f06c6c; --miss-bg:#3a1c1e;
+  --c-comp:#94a3b8; --c-cap:#e8a73e; --c-conf:#f06c6c;
+  --cached:#1f3350; --dirty:#4a2f1a; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.6}
+.wrap{max-width:1360px;margin:0 auto;padding-inline:16px;padding-block:20px 56px;display:flex;flex-direction:column;gap:16px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 24px}
+h1{font-size:26px;line-height:1.2;margin:0;letter-spacing:.02em;text-wrap:balance}
+h1 small{display:block;font-family:var(--f-mono);font-size:11px;font-weight:600;letter-spacing:.14em;color:var(--accent);margin-bottom:4px}
+.lede{margin:0;color:var(--muted);max-width:60ch}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;min-width:0}
+.ph{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.ph h2{margin:0;font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.pb{padding:12px 14px}
+/* toolbar */
+.toolbar{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;padding:12px 14px}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);letter-spacing:.04em}
+select,input[type=range]{font:inherit}
+select{background:var(--sunk);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:5px 8px;font-size:13px;max-width:100%}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+button{font:inherit;font-size:13px;font-weight:500;border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:4px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--muted)}
+button.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,select:focus-visible,textarea:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sep{width:1px;align-self:stretch;background:var(--line)}
+.status{font-family:var(--f-mono);font-size:12px;padding:3px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.status.run{color:var(--hit);border-color:var(--hit)}
+.status.end{color:var(--accent);border-color:var(--accent)}
+.status.err{color:var(--miss);border-color:var(--miss)}
+.geo{font-size:12px;color:var(--muted);padding:0 14px 12px;margin-top:-4px}
+.geo b{color:var(--ink);font-weight:600}
+/* grid */
+.grid{display:grid;grid-template-columns:290px minmax(0,1fr) 330px;gap:16px;align-items:start}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+@media (max-width:1180px){.grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.grid .center{grid-column:1/-1;order:-1}}
+@media (max-width:720px){.grid{grid-template-columns:minmax(0,1fr)}}
+/* program */
+.goal{font-size:13px;margin:0 0 6px}
+.try{font-size:12px;color:var(--muted);margin:0;padding:8px 10px;background:var(--sunk);border-radius:4px}
+.try b{color:var(--accent);font-weight:600}
+.listing{font-family:var(--f-mono);font-size:12px;line-height:1.75;overflow-x:auto;padding:6px 0;max-height:360px;overflow-y:auto}
+.ln{display:flex;white-space:pre;padding-right:12px}
+.ln .no{width:30px;flex:none;text-align:right;padding-right:10px;color:var(--muted);opacity:.6}
+.ln .cm{color:var(--muted)}
+.ln.cur{background:var(--dirty)}
+.ln.cur .no{color:var(--accent);opacity:1;font-weight:700}
+textarea{width:100%;min-height:300px;font-family:var(--f-mono);font-size:12px;line-height:1.6;background:var(--sunk);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:8px;resize:vertical}
+.asmerr{color:var(--miss);font-size:12px;margin:6px 0 0}
+.regs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.reg{background:var(--sunk);border-radius:4px;padding:4px 6px;font-family:var(--f-mono);font-size:12px;display:flex;flex-direction:column}
+.reg span{font-size:10px;color:var(--muted)}
+.reg.chg{background:var(--hit-bg)}
+.pcline{font-family:var(--f-mono);font-size:12px;color:var(--muted);margin-top:8px}
+/* address bits */
+.addr{display:flex;flex-direction:column;gap:8px}
+.addrtop{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;font-size:13px}
+.addrtop .big{font-family:var(--f-mono);font-size:20px;font-weight:700}
+.bits{display:flex;gap:6px;flex-wrap:wrap}
+.field{display:flex;flex-direction:column;gap:3px}
+.field .bx{display:flex;gap:2px}
+.field .bx span{width:22px;height:26px;display:grid;place-items:center;font-family:var(--f-mono);font-weight:700;font-size:13px;border-radius:3px;color:#fff}
+.field.tag .bx span{background:var(--tag)} .field.idx .bx span{background:var(--idx)} .field.off .bx span{background:var(--off)}
+:root[data-theme="dark"] .field .bx span{color:#0d1116}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .field .bx span{color:#0d1116}}
+.field .fl{font-size:11px;color:var(--muted);font-family:var(--f-mono)}
+.field.tag .fl b{color:var(--tag)} .field.idx .fl b{color:var(--idx)} .field.off .fl b{color:var(--off)}
+.verdict{font-size:13px;padding:8px 10px;border-radius:4px;background:var(--sunk)}
+.verdict.hit{background:var(--hit-bg)} .verdict.miss{background:var(--miss-bg)}
+.verdict b.h{color:var(--hit)} .verdict b.m{color:var(--miss)}
+/* cache */
+.cache{display:flex;flex-direction:column;gap:6px;max-height:560px;overflow:auto;padding:2px}
+.set{display:flex;gap:8px;align-items:stretch}
+.sidx{flex:none;width:56px;font-family:var(--f-mono);font-size:11px;color:var(--muted);padding-top:6px;line-height:1.3}
+.sidx b{color:var(--idx);font-size:13px}
+.set.act .sidx b{text-decoration:underline;text-underline-offset:3px}
+.ways{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px;flex:1;min-width:0}
+.cl{border:1px solid var(--line);border-radius:4px;background:var(--sunk);padding:5px 7px;font-family:var(--f-mono);font-size:11px;min-width:0}
+.cl.inv{opacity:.55}
+.cl .hd{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.flag{font-size:10px;font-weight:700;padding:0 4px;border-radius:3px;border:1px solid var(--line);color:var(--muted)}
+.flag.on{color:var(--ink);border-color:var(--ink)}
+.flag.d.on{color:var(--accent);border-color:var(--accent)}
+.cl .tg{color:var(--tag);font-weight:700}
+.cl .rk{margin-left:auto;color:var(--muted)}
+.cl .rg{color:var(--muted);font-size:10px}
+.cl .wd{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px}
+.cl .wd span{padding:0 3px;border-radius:2px;background:var(--panel);min-width:24px;text-align:right}
+.cl .wd span.tw{outline:2px solid var(--accent);outline-offset:-1px}
+.cl.hit{border-color:var(--hit);box-shadow:0 0 0 2px var(--hit-bg)}
+.cl.miss{border-color:var(--miss);box-shadow:0 0 0 2px var(--miss-bg);animation:flash .5s ease-out}
+@keyframes flash{from{background:var(--miss-bg)}to{background:var(--sunk)}}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px;color:var(--muted);padding:0 14px 12px}
+/* stats */
+.hr{display:flex;align-items:baseline;gap:10px}
+.hr .pct{font-family:var(--f-mono);font-size:36px;font-weight:700;line-height:1}
+.hr .sub{font-size:12px;color:var(--muted)}
+.bar3{display:flex;height:10px;border-radius:3px;overflow:hidden;background:var(--sunk);margin:10px 0 6px}
+.bar3 i{display:block;height:100%}
+.kv{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--f-mono);text-align:right}
+.dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
+.tl{display:flex;flex-wrap:wrap;gap:2px;margin-top:12px}
+.tl i{width:8px;height:14px;border-radius:1px;display:block}
+.log{display:flex;flex-direction:column;max-height:420px;overflow-y:auto}
+.ev{padding:8px 14px;border-bottom:1px solid var(--line);font-size:12px}
+.ev:first-child{background:var(--sunk)}
+.ev .top{display:flex;gap:8px;align-items:center;font-family:var(--f-mono);flex-wrap:wrap}
+.badge{font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;color:var(--panel);font-family:var(--f-mono)}
+.ev p{margin:3px 0 0;color:var(--muted)}
+.empty{padding:14px;color:var(--muted);font-size:13px}
+/* memory */
+.memwrap{overflow-x:auto}
+.mem{display:flex;flex-direction:column;gap:3px;min-width:560px}
+.mrow{display:flex;gap:8px;align-items:center}
+.mrow .ma{width:44px;font-family:var(--f-mono);font-size:11px;color:var(--muted);flex:none}
+.mrow .blks{display:flex;gap:4px;flex:1}
+.mblk{display:flex;gap:1px;flex:1;padding:1px;border-radius:3px}
+.mw{flex:1;height:22px;border-radius:2px;background:var(--sunk);font-family:var(--f-mono);font-size:9px;display:grid;place-items:center;color:var(--muted);overflow:hidden}
+.mw.c{background:var(--cached);color:var(--ink)}
+.mw.d{background:var(--dirty);color:var(--ink)}
+.mw.last{outline:2px solid var(--accent);outline-offset:-1px;color:var(--ink);font-weight:700}
+.mblk.lastb{background:var(--line)}
+/* learn */
+.learn{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.learn details{border-top:1px solid var(--line);padding:10px 0}
+.learn summary{cursor:pointer;font-weight:700;font-size:14px}
+.learn p{margin:6px 0 0;max-width:65ch;font-size:13px;color:var(--muted)}
+.learn p b{color:var(--ink)}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+
+.try a{color:var(--accent)}
+.labnav{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="labnav" aria-label="サイト内"><a href="../../">← 仮想CPU ラボ</a><a href="../../reference/">命令セット一覧</a><a href="../../docs/">ドキュメント</a></nav>
+
+  <header>
+    <div>
+      <h1><small>TOY ISA · 構成 CL-1 · データキャッシュ</small>キャッシュ・ラボ</h1>
+    </div>
+    <p class="lede">小さな仮想CPUで命令を1つずつ実行し、ロード/ストアのたびにキャッシュの中で何が起きるかを観察します。構成を変えて、ヒット率がどう変わるか試してください。</p>
+  </header>
+
+  <section class="panel" aria-label="操作と構成">
+    <div class="toolbar">
+      <div class="fld"><label for="prog">プログラム</label><select id="prog"></select></div>
+      <div class="btns">
+        <button id="bStep" class="pri">1命令実行</button>
+        <button id="bRun">連続実行</button>
+        <button id="bAll">最後まで</button>
+        <button id="bReset">リセット</button>
+      </div>
+      <div class="fld"><label for="speed">速さ</label><input id="speed" type="range" min="1" max="10" value="5"></div>
+      <span id="status" class="status">待機</span>
+      <div class="sep" aria-hidden="true"></div>
+      <div class="fld"><label for="cSize">容量</label><select id="cSize"><option value="64">64 B</option><option value="128" selected>128 B</option><option value="256">256 B</option></select></div>
+      <div class="fld"><label for="cBlock">ライン長</label><select id="cBlock"><option value="4">4 B (1語)</option><option value="8">8 B (2語)</option><option value="16" selected>16 B (4語)</option><option value="32">32 B (8語)</option></select></div>
+      <div class="fld"><label for="cAssoc">連想度</label><select id="cAssoc"><option value="1" selected>ダイレクトマップ</option><option value="2">2ウェイ</option><option value="4">4ウェイ</option><option value="0">フルアソシアティブ</option></select></div>
+      <div class="fld"><label for="cPol">置換方式</label><select id="cPol"><option value="LRU" selected>LRU</option><option value="FIFO">FIFO</option><option value="RAND">ランダム</option></select></div>
+      <div class="fld"><label for="cWrite">書き込み</label><select id="cWrite"><option value="WB" selected>ライトバック</option><option value="WT">ライトスルー</option></select></div>
+    </div>
+    <div class="geo" id="geo"></div>
+  </section>
+
+  <div class="grid">
+    <div class="col">
+      <section class="panel">
+        <div class="ph"><h2>プログラム</h2><button id="bEdit">編集</button></div>
+        <div class="pb">
+          <p class="goal" id="goal"></p>
+          <p class="try" id="try"></p>
+        </div>
+        <div id="listing" class="listing"></div>
+        <div id="editor" class="pb" hidden>
+          <textarea id="src" spellcheck="false" aria-label="アセンブリコード"></textarea>
+          <div class="btns" style="margin-top:8px"><button id="bAsm" class="pri">アセンブルして読み込む</button><button id="bCancel">キャンセル</button></div>
+          <p class="asmerr" id="asmerr"></p>
+          <p class="try" style="margin-top:8px">命令: li, add, sub, addi, lw, sw, beq, bne, blt, j, halt など TOY 命令セット全体 (<a href="../../reference/">一覧</a>) ／ レジスタ r0〜r15 (r0は常に0) ／ <span class="mono">lw r4, 8(r1)</span> の形で番地を指定。メモリは1KB、各ワード (番地 4n) の初期値は n。</p>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="ph"><h2>レジスタ</h2></div>
+        <div class="pb"><div class="regs" id="regs"></div><div class="pcline" id="pcline"></div></div>
+      </section>
+    </div>
+
+    <div class="col center">
+      <section class="panel">
+        <div class="ph"><h2>直近のメモリアクセス</h2></div>
+        <div class="pb addr" id="addr"></div>
+      </section>
+      <section class="panel">
+        <div class="ph"><h2>データキャッシュ</h2><span class="mono" style="font-size:11px;color:var(--muted)" id="cgeo"></span></div>
+        <div class="pb"><div class="cache" id="cache"></div></div>
+        <div class="legend">
+          <span><b class="mono">V</b> 有効ビット</span><span><b class="mono" style="color:var(--accent)">D</b> ダーティ(メモリより新しい)</span><span><b class="mono" style="color:var(--tag)">tag</b> タグ</span><span id="rkLegend"></span><span>枠の色: <b style="color:var(--hit)">ヒット</b> / <b style="color:var(--miss)">ミスで入れ替え</b></span>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel">
+        <div class="ph"><h2>計測</h2></div>
+        <div class="pb" id="stats"></div>
+      </section>
+      <section class="panel">
+        <div class="ph"><h2>アクセスログ</h2></div>
+        <div class="log" id="log"></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="ph"><h2>メインメモリ (1 KB)</h2><span style="font-size:11px;color:var(--muted)">1行 = 64バイト、区切り = ライン。<span class="dot" style="background:var(--cached)"></span>キャッシュ中 <span class="dot" style="background:var(--dirty)"></span>ダーティ(未書き戻し)</span></div>
+    <div class="pb memwrap"><div class="mem" id="mem"></div></div>
+  </section>
+
+  <section class="panel">
+    <div class="ph"><h2>基礎メモ</h2></div>
+    <div class="pb learn">
+      <div>
+        <details open><summary>番地の分解</summary><p>番地は下位から <b>オフセット</b>(ライン内の位置)、<b>インデックス</b>(どのセットに入るか)、<b>タグ</b>(そのセットの中でどのラインか)に分かれます。ラインが16Bならオフセットは4ビット、セットが8個ならインデックスは3ビットです。</p></details>
+        <details><summary>連想度</summary><p><b>ダイレクトマップ</b>は1セットに1ラインしかなく、同じインデックスのライン同士が追い出し合います。<b>nウェイ</b>は1セットにn個まで置けます。<b>フルアソシアティブ</b>はセットが1つだけで、どこにでも置けます。</p></details>
+      </div>
+      <div>
+        <details open><summary>ミスの3分類 (3C)</summary><p><b style="color:var(--c-comp)">初期参照</b>: そのラインに初めて触れた。<b style="color:var(--c-cap)">容量</b>: 同じ容量のフルアソシアティブ(LRU)でもミスする、つまり全体が小さい。<b style="color:var(--c-conf)">競合</b>: 容量は足りているのに、同じセットの奪い合いで追い出された。</p></details>
+        <details><summary>局所性</summary><p><b>空間的局所性</b>: 近くの番地を続けて使う。長いラインが効く。<b>時間的局所性</b>: 同じ番地を何度も使う。容量と置換方式が効く。</p></details>
+      </div>
+      <div>
+        <details open><summary>書き込み方式</summary><p><b>ライトバック</b>はキャッシュだけ更新してダーティにし、追い出すときにメモリへ書き戻します。<b>ライトスルー</b>は毎回メモリにも書きます。ここではライトスルーはライトノーアロケート(書き込みミスではキャッシュに載せない)、書き込みはライトバッファで待たないと仮定しています。</p></details>
+        <details><summary>このCPUのタイミング</summary><p>普通の命令とヒットは1サイクル。ミスはメモリからの読み込みで+20サイクル、ダーティなラインの書き戻しでさらに+20サイクル。命令フェッチはキャッシュの対象外です。</p></details>
+      </div>
+    </div>
+  </section>
+</div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>アトミック・ラボ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=M+PLUS+1+Code:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="../shared/lab.css">
+<style>
+/* layout: lesson sheet on the left, instrument bench (listing · cores · memory · logic-analyzer trace) on the right */
+:root{
+  --bg:#ecf0ee; --panel:#fbfcfb; --sunk:#f3f6f4; --ink:#14211d; --muted:#5a6a64; --line:#d2dbd7;
+  --c0:#0b7585; --c1:#ad3874; --amber:#b87400; --amber-soft:#fbefd6; --ok:#287f45; --bad:#bf3a25; --cs:#fff3dc;
+  --f-display:"DotGothic16","M PLUS 1 Code",ui-monospace,monospace;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --f-mono:"M PLUS 1 Code",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0c1412; --panel:#131e1b; --sunk:#0f1916; --ink:#e2ebe7; --muted:#90a39b; --line:#25332f;
+  --c0:#3ec0d1; --c1:#e679ad; --amber:#f0b440; --amber-soft:#3a2d10; --ok:#5fcf80; --bad:#ff7b64; --cs:#2b2412; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c1412; --panel:#131e1b; --sunk:#0f1916; --ink:#e2ebe7; --muted:#90a39b; --line:#25332f;
+  --c0:#3ec0d1; --c1:#e679ad; --amber:#f0b440; --amber-soft:#3a2d10; --ok:#5fcf80; --bad:#ff7b64; --cs:#2b2412; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.7}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:20px;padding-block:24px 48px}
+h1,h2,h3{margin:0;text-wrap:balance;font-weight:700}
+button,select,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--c0);outline-offset:2px}
+
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 24px;margin-bottom:16px}
+.top h1{font-family:var(--f-display);font-weight:400;font-size:2.1rem;letter-spacing:.04em;line-height:1.2}
+.top h1 small{font-size:.9rem;color:var(--muted);margin-left:.6em;letter-spacing:.1em}
+.top p{margin:0;color:var(--muted);max-width:60ch;font-size:.92rem}
+
+.lessons{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+.lessons button{display:flex;align-items:center;gap:8px;padding:6px 14px 6px 8px;border:1px solid var(--line);background:var(--panel);border-radius:999px;cursor:pointer;font-size:.9rem}
+.lessons button .n{font-family:var(--f-display);width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:var(--sunk);font-size:.85rem}
+.lessons button[aria-current="true"]{border-color:var(--ink);background:var(--ink);color:var(--panel)}
+.lessons button[aria-current="true"] .n{background:var(--panel);color:var(--ink)}
+
+.layout{display:grid;grid-template-columns:minmax(0,330px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:980px){.layout{grid-template-columns:minmax(0,1fr)}}
+
+.lesson{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:14px;padding:20px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+@media (max-width:980px){.lesson{position:static}}
+.eyebrow{font-family:var(--f-mono);font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.lesson h2{font-size:1.35rem;line-height:1.4}
+.lesson p{margin:0}
+.lesson .body{display:flex;flex-direction:column;gap:10px;font-size:.93rem}
+.variants{display:flex;flex-direction:column;gap:6px}
+.variants button{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;padding:8px 10px;border:1px solid var(--line);background:var(--sunk);border-radius:4px;cursor:pointer;font-family:var(--f-mono);font-size:.85rem}
+.variants button[aria-pressed="true"]{border-color:var(--ink);background:var(--panel);box-shadow:inset 3px 0 0 var(--ink)}
+.tag{font-family:var(--f-body);font-size:.72rem;padding:1px 8px;border-radius:999px;white-space:nowrap;font-weight:700}
+.tag.safe{color:var(--ok);border:1px solid var(--ok)}
+.tag.unsafe{color:var(--bad);border:1px solid var(--bad)}
+.tag.edited{color:var(--muted);border:1px solid var(--line)}
+.tasks{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px;font-size:.9rem}
+.point{font-size:.88rem;padding:10px 12px;background:var(--amber-soft);border-radius:4px}
+.point b{color:var(--amber)}
+.lesson h3{font-size:.8rem;letter-spacing:.1em;color:var(--muted);font-weight:500}
+
+.bench{display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;min-width:0}
+.ph{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.ph h2{font-size:.95rem}
+.ph .sub{color:var(--muted);font-size:.8rem}
+
+/* status strip */
+.status{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:6px;background:var(--panel);overflow:hidden}
+.status > div{padding:10px 14px;border-right:1px solid var(--line);min-width:0}
+.status > div:last-child{border-right:0}
+.status .k{font-size:.72rem;color:var(--muted);letter-spacing:.06em}
+.status .v{font-family:var(--f-display);font-size:1.5rem;line-height:1.3;font-variant-numeric:tabular-nums}
+.status .v small{font-size:.85rem;color:var(--muted)}
+.status .v.bad{color:var(--bad)} .status .v.ok{color:var(--ok)}
+.status .verdict .v{font-family:var(--f-body);font-weight:700;font-size:1rem;line-height:1.5;padding-top:4px}
+@media (max-width:720px){.status{grid-template-columns:repeat(2,minmax(0,1fr))}.status > div{border-bottom:1px solid var(--line)}.status .verdict{grid-column:1/-1}}
+
+.machine{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px}
+@media (max-width:1180px){.machine{grid-template-columns:minmax(0,1fr)}}
+
+/* listing */
+.listing{font-family:var(--f-mono);font-size:.82rem;line-height:1.75;background:var(--sunk);border-radius:4px;padding-block:6px;overflow-x:auto}
+.row{display:grid;grid-template-columns:22px 22px 26px max-content;align-items:center;padding-right:12px}
+.row.cs{background:var(--cs)}
+.row .g{display:flex;justify-content:center}
+.row .ln{color:var(--muted);text-align:right;padding-right:10px;font-size:.72rem;opacity:.7}
+.row .src{white-space:pre}
+.row.flash0 .src{box-shadow:inset 0 -2px 0 var(--c0)}
+.row.flash1 .src{box-shadow:inset 0 -2px 0 var(--c1)}
+.pcm{width:18px;height:14px;font-size:.6rem;line-height:14px;text-align:center;color:#fff;font-weight:600;clip-path:polygon(0 0,70% 0,100% 50%,70% 100%,0 100%)}
+.pcm.c0{background:var(--c0)} .pcm.c1{background:var(--c1)}
+.op{font-weight:600} .lk{color:var(--amber);font-weight:600} .reg{color:var(--c0)} .mem{color:var(--c1)} .lbl{color:var(--muted);font-weight:600} .com{color:var(--muted)} .dir{color:var(--amber)}
+.cslegend{display:flex;gap:6px;align-items:center;font-size:.75rem;color:var(--muted)}
+.cslegend i{width:12px;height:12px;background:var(--cs);border:1px solid var(--line);display:inline-block}
+
+.editor{margin-top:10px}
+.editor summary{cursor:pointer;font-size:.85rem;color:var(--muted)}
+.editor textarea{width:100%;min-height:240px;margin-top:8px;padding:10px;font-family:var(--f-mono);font-size:.82rem;line-height:1.6;background:var(--sunk);border:1px solid var(--line);border-radius:4px;resize:vertical;tab-size:8}
+.editor .row-btn{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.err{color:var(--bad);font-size:.85rem}
+
+.hw{display:flex;flex-direction:column;gap:14px;min-width:0}
+.cores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:420px){.cores{grid-template-columns:minmax(0,1fr)}}
+.core{border-top:4px solid var(--cc)}
+.core[data-c="0"]{--cc:var(--c0)} .core[data-c="1"]{--cc:var(--c1)}
+.core .ph h2{color:var(--cc);font-family:var(--f-display);font-weight:400;font-size:1.1rem}
+.state{font-size:.75rem;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.state.cs{border-color:var(--amber);color:var(--amber)}
+.state.halt{background:var(--sunk)}
+.regs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-bottom:8px}
+.reg-c{background:var(--sunk);border-radius:3px;padding:4px 6px;text-align:center;font-variant-numeric:tabular-nums}
+.reg-c span{display:block;font-size:.68rem;color:var(--muted);font-family:var(--f-mono)}
+.reg-c b{font-family:var(--f-mono);font-weight:600;font-size:1.05rem}
+.reg-c.chg{background:color-mix(in srgb,var(--cc) 20%,var(--sunk))}
+.meta{font-size:.75rem;color:var(--muted);display:flex;flex-direction:column;gap:2px;margin-bottom:10px;font-family:var(--f-mono)}
+.meta b{color:var(--ink);font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:7px 14px;border-radius:4px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:.88rem;font-weight:500}
+.btn:hover:not(:disabled){border-color:var(--ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.btn.core-btn{width:100%;background:var(--cc);border-color:var(--cc);color:#fff}
+.btn.core-btn:hover:not(:disabled){filter:brightness(1.08);border-color:var(--cc)}
+kbd{font-family:var(--f-mono);font-size:.7rem;padding:0 5px;border-radius:3px;border:1px solid currentColor;opacity:.8}
+
+.cells{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cell{border:1px solid var(--line);border-radius:4px;padding:8px 12px;display:flex;flex-direction:column;gap:2px;position:relative;transition:background .3s}
+.cell .addr{font-family:var(--f-mono);font-size:.7rem;color:var(--muted)}
+.cell .nm{font-family:var(--f-mono);font-size:.85rem}
+.cell .val{font-family:var(--f-display);font-size:2rem;line-height:1.2;font-variant-numeric:tabular-nums}
+.cell.w0{background:color-mix(in srgb,var(--c0) 14%,transparent)}
+.cell.w1{background:color-mix(in srgb,var(--c1) 14%,transparent)}
+.cell.lost .val{color:var(--bad)}
+.resv{display:flex;gap:4px;min-height:20px;flex-wrap:wrap}
+.resv span{font-size:.68rem;padding:0 6px;border-radius:3px;border:1px dashed currentColor}
+.lamp{display:inline-flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:.72rem;color:var(--muted);letter-spacing:.06em}
+.lamp i{width:10px;height:10px;border-radius:50%;background:var(--line)}
+.lamp.on{color:var(--amber)}
+.lamp.on i{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+
+/* controls */
+.controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+.controls .grp{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.controls label{font-size:.82rem;color:var(--muted);display:flex;gap:8px;align-items:center}
+.controls input[type=range]{width:120px;accent-color:var(--ink)}
+.controls output{font-family:var(--f-mono);font-size:.82rem;color:var(--ink);min-width:3.5em;display:inline-block}
+.presets{display:flex;gap:4px}
+.presets button{font-size:.72rem;padding:1px 8px;border:1px solid var(--line);background:var(--sunk);border-radius:999px;cursor:pointer}
+
+/* timeline */
+.tl{display:grid;grid-template-columns:76px minmax(0,1fr);border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--sunk)}
+.tl-lab{display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--panel)}
+.tl-lab div,.tl-row > div{height:30px;display:flex;align-items:center;font-size:.72rem}
+.tl-lab div{padding-left:10px;font-family:var(--f-mono);color:var(--muted)}
+.tl-lab .l0{color:var(--c0);font-weight:600}.tl-lab .l1{color:var(--c1);font-weight:600}
+.tl-scroll{overflow-x:auto;min-width:0}
+.tl-grid{display:flex;flex-direction:column;width:max-content;min-width:100%}
+.tl-row{display:flex}
+.tl-row > div{width:48px;flex:none;justify-content:center;border-right:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-family:var(--f-mono);font-variant-numeric:tabular-nums;position:relative}
+.tl-row.num > div{color:var(--muted);font-size:.65rem}
+.blk{position:absolute;inset:5px 2px;border-radius:2px;display:grid;place-items:center;font-size:.62rem;color:#fff;font-weight:600;letter-spacing:-.02em}
+.blk.c0{background:var(--c0)} .blk.c1{background:var(--c1)}
+.blk.atomic{box-shadow:0 0 0 2px var(--amber);}
+.blk.fail{text-decoration:line-through;opacity:.75}
+.blk.uop{background-image:repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.25) 4px 6px)}
+.tl-row .chg{font-weight:600}
+.tl-row .lostv{color:var(--bad);font-weight:600}
+.tl-row .lostv::after{content:"";position:absolute;left:6px;right:6px;bottom:3px;height:2px;background:var(--bad)}
+.tl-row .viol{background:color-mix(in srgb,var(--bad) 18%,transparent)}
+.tl-empty{padding:18px;color:var(--muted);font-size:.85rem}
+.tl-key{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:.75rem;color:var(--muted)}
+.tl-key span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:10px;border-radius:2px;display:inline-block;background:var(--muted)}
+.sw.a{box-shadow:0 0 0 2px var(--amber);background:var(--panel)}
+.sw.r{background:var(--bad);height:3px}
+
+.lower{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+@media (max-width:860px){.lower{grid-template-columns:minmax(0,1fr)}}
+.log{font-family:var(--f-mono);font-size:.76rem;max-height:300px;overflow:auto;display:flex;flex-direction:column;gap:1px}
+.log div{display:grid;grid-template-columns:3.2em 2.6em minmax(0,1fr);gap:6px;padding:2px 4px;border-radius:2px}
+.log div:nth-child(odd){background:var(--sunk)}
+.log .s{color:var(--muted);text-align:right}
+.log .c0{color:var(--c0);font-weight:600}.log .c1{color:var(--c1);font-weight:600}
+.log .x{color:var(--bad)} .log .a{color:var(--amber)}
+
+.hist{display:flex;align-items:flex-end;gap:6px;height:160px;padding-top:18px;border-bottom:1px solid var(--line);margin-top:10px}
+.bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:0}
+.bar i{display:block;width:100%;max-width:44px;background:var(--bad);border-radius:2px 2px 0 0;min-height:1px}
+.bar.exp i{background:var(--ok)}
+.bar .c{font-family:var(--f-mono);font-size:.68rem;color:var(--muted);margin-bottom:2px}
+.hist-x{display:flex;gap:6px;font-family:var(--f-mono);font-size:.75rem}
+.hist-x span{flex:1;text-align:center;min-width:0}
+.trial-sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.trial-sum div{background:var(--sunk);border-radius:4px;padding:6px 10px}
+.trial-sum .k{font-size:.7rem;color:var(--muted)}
+.trial-sum .v{font-family:var(--f-display);font-size:1.25rem;font-variant-numeric:tabular-nums}
+.note{font-size:.82rem;color:var(--muted);margin:0}
+
+.isa summary{cursor:pointer;font-weight:700;font-size:.95rem}
+.tbl{overflow-x:auto;margin-top:10px}
+.tbl table{border-collapse:collapse;font-size:.83rem;width:100%}
+.tbl th,.tbl td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font-size:.72rem;color:var(--muted);font-weight:500;letter-spacing:.06em}
+.tbl td:first-child{font-family:var(--f-mono);white-space:nowrap}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+
+.isa a{color:var(--c0)}
+.labnav{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="labnav" aria-label="サイト内"><a href="../../">← 仮想CPU ラボ</a><a href="../../reference/">命令セット一覧</a><a href="../../docs/">ドキュメント</a></nav>
+
+  <header class="top">
+    <h1>アトミック・ラボ<small>構成 AL-2</small></h1>
+    <p>2コアの仮想CPUで、どちらのコアをいつ動かすかを自分で決めながら、競合状態とアトミック命令の働きを1命令ずつ確かめます。</p>
+  </header>
+
+  <nav class="lessons" id="lessonNav" aria-label="レッスン"></nav>
+
+  <div class="layout">
+    <aside class="lesson" id="lessonCard"></aside>
+
+    <main class="bench">
+      <section class="status" id="status" aria-live="polite"></section>
+
+      <div class="machine">
+        <section class="panel">
+          <div class="ph"><h2>プログラム</h2><span class="cslegend"><i></i>クリティカルセクション</span></div>
+          <div class="listing" id="listing"></div>
+          <details class="editor" id="editor">
+            <summary>コードを編集する</summary>
+            <textarea id="codeArea" spellcheck="false" aria-label="アセンブリコード"></textarea>
+            <div class="row-btn">
+              <button class="btn primary" id="applyBtn">読み込んで最初から実行</button>
+              <button class="btn" id="revertBtn">元のコードに戻す</button>
+              <span class="err" id="asmErr"></span>
+            </div>
+          </details>
+        </section>
+
+        <div class="hw">
+          <div class="cores" id="cores"></div>
+          <section class="panel" id="memPanel">
+            <div class="ph"><h2>共有メモリ</h2><span class="lamp" id="lamp"><i></i>BUS LOCK</span></div>
+            <div class="cells" id="cells"></div>
+          </section>
+        </div>
+      </div>
+
+      <section class="panel controls">
+        <div class="grp">
+          <button class="btn primary" id="schedBtn">スケジューラで1命令 <kbd>Space</kbd></button>
+          <button class="btn" id="autoBtn">自動実行</button>
+          <button class="btn" id="resetBtn">リセット <kbd>R</kbd></button>
+        </div>
+        <div class="grp">
+          <label for="pSlider">コア切り替え確率</label>
+          <input type="range" id="pSlider" min="0" max="100" step="1" value="100">
+          <output id="pOut">100%</output>
+          <span class="presets"><button data-p="100">交互</button><button data-p="50">半々</button><button data-p="5">まれ</button></span>
+        </div>
+        <div class="grp">
+          <label for="speed">速度</label>
+          <select id="speed"><option value="900">ゆっくり</option><option value="450" selected>ふつう</option><option value="120">速い</option></select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="ph"><h2>実行トレース</h2><span class="sub">1列 = 1ステップ。どちらのコアが何を実行したか</span></div>
+        <div class="tl" id="tl"></div>
+        <div class="tl-key">
+          <span><i class="sw" style="background:var(--c0)"></i>コア0</span>
+          <span><i class="sw" style="background:var(--c1)"></i>コア1</span>
+          <span><i class="sw a"></i>アトミック操作（バスロック）</span>
+          <span><i class="sw" style="background-image:repeating-linear-gradient(135deg,transparent 0 3px,var(--panel) 3px 5px)"></i>μop（命令の途中）</span>
+          <span><s>CAS</s> 失敗・待ち</span>
+          <span><i class="sw r"></i>更新消失</span>
+        </div>
+      </section>
+
+      <div class="lower">
+        <section class="panel">
+          <div class="ph"><h2>実行ログ</h2><span class="sub">新しい順</span></div>
+          <div class="log" id="log"></div>
+        </section>
+        <section class="panel">
+          <div class="ph"><h2>まとめて試行</h2><span class="sub" id="trialSub"></span></div>
+          <div class="grp" style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn primary" id="trialBtn">1000回ランダムに実行</button>
+          </div>
+          <div id="trialOut"><p class="note" style="margin-top:10px">現在のプログラムを、上のコア切り替え確率でランダムにスケジュールして1000回動かし、最終的な counter の値の分布を出します。</p></div>
+        </section>
+      </div>
+
+      <details class="panel isa">
+        <summary>AL-2 構成で使う命令</summary>
+        <div class="tbl"><table>
+          <thead><tr><th>命令</th><th>動作</th><th>不可分か</th></tr></thead>
+          <tbody>
+            <tr><td>LI rd, imm · MOV rd, rs · ADDI · SUBI</td><td>レジスタの計算（r0 は常に 0）</td><td>—</td></tr>
+            <tr><td>LW rd, counter</td><td>メモリから読む（counter は番地 0x00 の記号）</td><td>単独の読み出しは不可分</td></tr>
+            <tr><td>SW rs, counter</td><td>メモリへ書く</td><td>単独の書き込みは不可分</td></tr>
+            <tr><td>INCM counter</td><td>メモリを +1。内部で「読み出し」「書き込み」の2 μop に分かれる（独自拡張 Xmrmw）</td><td>いいえ</td></tr>
+            <tr><td>LOCK INCM counter</td><td>バスをロックしたまま読み出しから書き込みまで行う</td><td>はい</td></tr>
+            <tr><td>AMOADD rd, rt, counter</td><td>rd ← 旧値、メモリ ← 旧値 + rt（fetch-and-add）</td><td>はい</td></tr>
+            <tr><td>XCHG rd, lock</td><td>rd とメモリを入れ替える（test-and-set に使う）</td><td>はい</td></tr>
+            <tr><td>CAS rd, rt, counter</td><td>メモリ = rd なら rt を書く。どちらの場合も rd ← メモリの旧値</td><td>はい</td></tr>
+            <tr><td>LL rd, counter</td><td>読み出して番地を予約する</td><td>—</td></tr>
+            <tr><td>SC rd, rt, counter</td><td>予約が残っていれば rt を書いて rd ← 1、消えていれば rd ← 0</td><td>はい</td></tr>
+            <tr><td>J label · BEQZ / BNEZ rs, label · BNE rs, rt, label</td><td>無条件ジャンプ / 0 なら / 0 でなければ / 等しくなければ</td><td>—</td></tr>
+            <tr><td>HALT · NOP</td><td>停止、何もしない</td><td>—</td></tr>
+            <tr><td>.region cs ～ .endregion</td><td>クリティカルセクションの範囲を示す印（命令ではない）。2コアが同時に入ると警告</td><td>—</td></tr>
+          </tbody>
+        </table></div>
+        <p class="note" style="margin-top:10px">メモリは counter（0x00）と lock（0x04）の2語。両方のコアが同じプログラムを実行し、レジスタはコアごとに16本（ここでは r0〜r7 を表示）。1ステップで1命令（INCM は1 μop）を実行します。命令の正式な定義は<a href="../../reference/">命令セット一覧</a>へ。</p>
+      </details>
+    </main>
+  </div>
+</div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

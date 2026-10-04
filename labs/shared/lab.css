@@ -1,0 +1,12 @@
+/* 全ラボ共通の最小限のスタイル。各ラボの見た目はそれぞれの <style> にある。 */
+:root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden]:not([hidden=until-found i]) { display: none !important; }
+
+/* ラボ上部の小さなナビゲーション */
+.labnav { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12px; margin: 0 0 12px; }
+.labnav a { color: inherit; opacity: .7; text-decoration: none; }
+.labnav a:hover { opacity: 1; text-decoration: underline; }
+.labnav a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

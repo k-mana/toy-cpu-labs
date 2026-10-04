@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>パイプライン・ラボ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="../shared/lab.css">
+<style>
+/* Layout: 左=プログラムと設定（操作台）、右=5段ステージ・タイミング図・レジスタ（観測窓）。ロジックアナライザ風の格子。 */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --sunk:#e3e8ee; --line:#cfd7e0; --ink:#17202b; --muted:#5a6878;
+  --accent:#2347c5; --accent-soft:#dfe6fb;
+  --if:#0c7f86; --id:#6a48d0; --ex:#b77400; --mem:#c43d64; --wb:#2b8a3e;
+  --warn:#b45309; --crit:#c0262d;
+  --sans:"IBM Plex Sans JP","Hiragino Sans","Yu Gothic UI",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10151c; --surface:#18202a; --sunk:#0c1117; --line:#2a3644; --ink:#e4eaf1; --muted:#93a2b3;
+  --accent:#7d9bff; --accent-soft:#1f2b4d;
+  --if:#3cc3c9; --id:#a48cff; --ex:#f0b23e; --mem:#ff7a9c; --wb:#5fd07a;
+  --warn:#f4a54a; --crit:#ff6b70; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#10151c; --surface:#18202a; --sunk:#0c1117; --line:#2a3644; --ink:#e4eaf1; --muted:#93a2b3;
+  --accent:#7d9bff; --accent-soft:#1f2b4d;
+  --if:#3cc3c9; --id:#a48cff; --ex:#f0b23e; --mem:#ff7a9c; --wb:#5fd07a;
+  --warn:#f4a54a; --crit:#ff6b70; color-scheme:dark;}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6;margin:0;padding:0 16px}
+.wrap{max-width:1320px;margin:0 auto;padding-block:20px 48px}
+h1,h2,h3{text-wrap:balance;margin:0}
+button,select,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.brand{display:flex;flex-direction:column;gap:2px;min-width:0}
+.brand .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.brand h1{font-size:24px;font-weight:700;letter-spacing:.01em}
+.brand h1 .chip{font-family:var(--mono);font-size:13px;font-weight:600;padding:2px 7px;border:1.5px solid var(--ink);border-radius:3px;margin-right:8px;vertical-align:3px}
+.legend{display:flex;flex-wrap:wrap;gap:6px}
+.legend span{font-family:var(--mono);font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:3px}
+
+.layout{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;min-width:0}
+.panel > h2{font-size:12px;font-family:var(--mono);font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between;gap:8px}
+
+.samples{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.samples button{text-align:left;border:1px solid var(--line);background:var(--sunk);border-radius:4px;padding:7px 9px;cursor:pointer;font-size:12.5px;line-height:1.35}
+.samples button:hover{border-color:var(--accent)}
+.samples button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+.samples small{display:block;color:var(--muted);font-size:11px}
+.hint{margin-top:10px;font-size:13px;background:var(--sunk);border-radius:4px;padding:9px 11px;color:var(--ink)}
+.hint b{color:var(--accent)}
+
+textarea#code{width:100%;min-height:210px;resize:vertical;font-family:var(--mono);font-size:13px;line-height:1.55;background:var(--sunk);border:1px solid var(--line);border-radius:4px;padding:10px;tab-size:4}
+.err{color:var(--crit);font-size:12.5px;margin-top:6px;font-family:var(--mono);white-space:pre-wrap}
+.isa{font-size:12px;color:var(--muted);margin-top:8px}
+.isa code{font-family:var(--mono);color:var(--ink);font-size:11.5px}
+details summary{cursor:pointer;color:var(--accent);font-size:12.5px}
+
+.opt{display:flex;flex-direction:column;gap:10px}
+.opt .row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.opt label{font-weight:500}
+.opt p{margin:0;font-size:12px;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden;flex-shrink:0}
+.seg button{border:0;background:transparent;padding:4px 10px;font-size:12.5px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+
+/* control bar */
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:4px;padding:6px 12px;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.btn:disabled{opacity:.45;cursor:default}
+.clock{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;padding:5px 10px;background:var(--sunk);border-radius:4px;white-space:nowrap}
+.clock b{font-size:17px}
+.scrub{flex:1 1 160px;min-width:120px;accent-color:var(--accent)}
+.speed{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.speed select{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:3px 4px}
+
+/* stage strip */
+.stages{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;margin-top:14px;position:relative}
+@media (max-width:640px){.stages{grid-template-columns:minmax(0,1fr)}}
+.stage{border:1px solid var(--line);border-top:4px solid var(--c);background:var(--surface);padding:9px 10px 10px;min-height:132px;display:flex;flex-direction:column;gap:4px;min-width:0;position:relative}
+.stage + .stage{border-left:0}
+@media (max-width:640px){.stage + .stage{border-left:1px solid var(--line);border-top-width:4px;margin-top:-1px}.stage{min-height:0}}
+.stage .sh{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.stage .sn{font-family:var(--mono);font-weight:600;color:var(--c);font-size:15px}
+.stage .sj{font-size:10.5px;color:var(--muted);text-align:right;line-height:1.3}
+.stage .ins{font-family:var(--mono);font-size:13px;font-weight:600;word-break:break-word}
+.stage .ins.empty{color:var(--muted);font-weight:400;font-style:italic}
+.stage .note{font-size:12px;color:var(--muted);font-family:var(--mono);word-break:break-word}
+.tag{align-self:flex-start;font-size:11px;font-weight:700;padding:1px 7px;border-radius:3px;letter-spacing:.04em}
+.tag.stall{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.tag.flush{background:color-mix(in srgb,var(--crit) 16%,transparent);color:var(--crit)}
+.tag.fwd{background:var(--accent-soft);color:var(--accent)}
+.tag.bubble{background:var(--sunk);color:var(--muted)}
+.stage.src{box-shadow:inset 0 0 0 2px var(--accent)}
+.stage.is-if{--c:var(--if)}.stage.is-id{--c:var(--id)}.stage.is-ex{--c:var(--ex)}.stage.is-mem{--c:var(--mem)}.stage.is-wb{--c:var(--wb)}
+.latchrow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px}
+.latchrow span{text-align:right;padding-right:2px;transform:translateX(50%)}
+@media (max-width:640px){.latchrow{display:none}}
+
+/* events */
+.events{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:5px}
+.events li{font-size:13px;padding:6px 10px;border-radius:4px;background:var(--sunk);border-left:3px solid var(--muted)}
+.events li.stall{border-left-color:var(--warn)}
+.events li.flush{border-left-color:var(--crit)}
+.events li.fwd{border-left-color:var(--accent)}
+.events li.done{border-left-color:var(--wb)}
+.events li .k{font-weight:700;margin-right:6px}
+
+/* timing diagram */
+.diag{overflow-x:auto;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+table.tm{border-collapse:separate;border-spacing:0;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.tm th,.tm td{padding:0;height:26px;text-align:center;border-bottom:1px solid var(--line)}
+.tm thead th{position:sticky;top:0;background:var(--sunk);color:var(--muted);font-weight:500;font-size:11px;min-width:38px}
+.tm thead th.cur{background:var(--accent);color:var(--surface)}
+.tm .lbl{position:sticky;left:0;background:var(--surface);text-align:left;padding:0 10px;white-space:nowrap;border-right:1px solid var(--line);z-index:1;font-weight:500;min-width:170px}
+.tm thead .lbl{background:var(--sunk);z-index:2}
+.tm .lbl .pcn{color:var(--muted);margin-right:6px;font-weight:400}
+.tm tr.flushed .lbl{color:var(--muted);text-decoration:line-through}
+.tm td{min-width:38px;border-right:1px dashed color-mix(in srgb,var(--line) 70%,transparent)}
+.tm td.curc{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.tm td .c{display:block;margin:2px;line-height:20px;border-radius:3px;font-weight:600;font-size:11px}
+.c.IF{background:color-mix(in srgb,var(--if) 18%,transparent);color:var(--if)}
+.c.ID{background:color-mix(in srgb,var(--id) 18%,transparent);color:var(--id)}
+.c.EX{background:color-mix(in srgb,var(--ex) 20%,transparent);color:var(--ex)}
+.c.MEM{background:color-mix(in srgb,var(--mem) 18%,transparent);color:var(--mem)}
+.c.WB{background:color-mix(in srgb,var(--wb) 18%,transparent);color:var(--wb)}
+.c.stall{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--warn) 22%,transparent) 0 4px,transparent 4px 8px);color:var(--warn)}
+.c.flush{background:transparent;color:var(--crit);text-decoration:line-through;outline:1px dashed var(--crit);outline-offset:-1px}
+.diag-key{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:8px}
+.diag-key i{display:inline-block;width:18px;height:12px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+.stat{background:var(--sunk);border-radius:4px;padding:8px 10px}
+.stat .v{font-family:var(--mono);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.stat .l{font-size:11.5px;color:var(--muted)}
+.compare{margin-top:12px;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.bar{display:grid;grid-template-columns:150px minmax(0,1fr) 70px;align-items:center;gap:8px}
+@media (max-width:480px){.bar{grid-template-columns:100px minmax(0,1fr) 56px}}
+.bar .track{height:12px;background:var(--sunk);border-radius:2px;overflow:hidden}
+.bar .fill{height:100%;background:var(--muted)}
+.bar .fill.p{background:var(--accent)}
+.bar .n{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+
+/* regs & mem */
+.rm{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:18px}
+@media (max-width:700px){.rm{grid-template-columns:minmax(0,1fr)}}
+.cells{display:grid;gap:4px}
+.cells.r{grid-template-columns:repeat(4,minmax(0,1fr))}
+.cells.m{grid-template-columns:repeat(8,minmax(0,1fr))}
+@media (max-width:480px){.cells.m{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.cell{background:var(--sunk);border-radius:3px;padding:4px 6px;font-family:var(--mono);font-variant-numeric:tabular-nums;transition:background .3s}
+.cell .a{font-size:10px;color:var(--muted)}
+.cell .d{font-size:14px;font-weight:600}
+.cell.hot{background:color-mix(in srgb,var(--wb) 25%,transparent)}
+.cell.hotm{background:color-mix(in srgb,var(--mem) 22%,transparent)}
+.sub{font-size:11px;font-family:var(--mono);letter-spacing:.1em;color:var(--muted);margin-bottom:6px;text-transform:uppercase}
+
+/* guide */
+.guide{display:flex;flex-direction:column;gap:2px}
+.guide details{border-bottom:1px solid var(--line);padding:7px 0}
+.guide details:last-child{border-bottom:0}
+.guide summary{color:var(--ink);font-weight:500;font-size:13.5px}
+.guide p{margin:6px 0 2px;font-size:13px;color:var(--ink);max-width:65ch}
+.guide code{font-family:var(--mono);font-size:12px;background:var(--sunk);padding:0 4px;border-radius:2px}
+.kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:3px;padding:0 5px}
+.foot{font-size:12px;color:var(--muted);margin-top:4px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.isa a{color:var(--accent)}
+.latchrow span:last-child{transform:none}
+.labnav{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="labnav" aria-label="サイト内"><a href="../../">← 仮想CPU ラボ</a><a href="../../reference/">命令セット一覧</a><a href="../../docs/">ドキュメント</a></nav>
+
+  <header class="top">
+    <div class="brand">
+      <span class="eyebrow">TOY ISA · 構成 TOY-5 · 5段インオーダー・パイプライン</span>
+      <h1>パイプライン・ラボ</h1>
+    </div>
+    <div class="legend" aria-label="ステージの色">
+      <span class="c IF">IF フェッチ</span><span class="c ID">ID デコード</span><span class="c EX">EX 実行</span><span class="c MEM">MEM メモリ</span><span class="c WB">WB 書き戻し</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="col">
+      <section class="panel">
+        <h2>プログラムを選ぶ</h2>
+        <div class="samples" id="samples"></div>
+        <div class="hint" id="hint"></div>
+      </section>
+
+      <section class="panel">
+        <h2>CPU の設定</h2>
+        <div class="opt">
+          <div class="row"><label>フォワーディング</label>
+            <div class="seg" id="optFwd"><button type="button" data-v="on">あり</button><button type="button" data-v="off">なし</button></div></div>
+          <p>結果をレジスタに書き戻す前に、後続命令の EX へ直接渡す回路です。</p>
+          <div class="row"><label>分岐の扱い</label>
+            <div class="seg" id="optBr"><button type="button" data-v="predict">不成立予測</button><button type="button" data-v="stall">停止して待つ</button></div></div>
+          <p>分岐 (BEQ など) は EX で結果が決まります。予測が外れると、後ろの2命令を取り消します。</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>プログラム <span id="ninst"></span></h2>
+        <textarea id="code" spellcheck="false" aria-label="アセンブリ"></textarea>
+        <div class="err" id="err" hidden></div>
+        <details class="isa">
+          <summary>使える命令 (TOY 命令セット)</summary>
+          <p>レジスタ <code>r0</code>〜<code>r15</code>（r0 は常に 0）、データメモリ 64 バイト（16 ワード）。番地はバイト単位なので、ワードは 0, 4, 8, … です。</p>
+          <p><code>ADD rd, rs, rt</code> · <code>SUB</code> · <code>AND</code> · <code>OR</code> · <code>XOR</code> · <code>SLT</code> · <code>MUL</code><br>
+          <code>ADDI rd, rs, imm</code> · <code>LI rd, imm</code> · <code>MOV rd, rs</code><br>
+          <code>LW rd, off(rs)</code> · <code>SW rt, off(rs)</code><br>
+          <code>BEQ rs, rt, ラベル</code> · <code>BNE</code> · <code>BLT</code> · <code>BGE</code> · <code>J ラベル</code> · <code>NOP</code><br>
+          <code>loop:</code> でラベル、<code>;</code> か <code>#</code> 以降はコメント。<a href="../../reference/">すべての命令</a></p>
+        </details>
+      </section>
+
+      <section class="panel">
+        <h2>学習ガイド</h2>
+        <div class="guide">
+          <details open><summary>パイプラインとは</summary>
+            <p>1命令を IF・ID・EX・MEM・WB の5工程に分け、工程ごとに別の命令を同時に処理します。洗濯で「洗う・乾かす・たたむ」を重ねるのと同じ発想です。理想では毎サイクル1命令が完了し、CPI（1命令あたりのサイクル数）は 1 に近づきます。</p></details>
+          <details><summary>データハザード（RAW）</summary>
+            <p>前の命令の結果を次の命令がすぐ読むと、まだレジスタに書かれていない値を読んでしまいます。フォワーディングがない CPU は、値が WB で書かれるまで ID で待ちます（ストール）。</p></details>
+          <details><summary>フォワーディング</summary>
+            <p>EX/MEM や MEM/WB のパイプラインレジスタにある計算結果を、EX の入力へ直接回します。ALU 命令どうしならストールはゼロになります。</p></details>
+          <details><summary>ロード・ユース・ハザード</summary>
+            <p><code>LW</code> の値は MEM の終わりにやっと手に入るので、直後の命令はフォワーディングがあっても1サイクル待つ必要があります。命令の順番を入れ替えると隠せます。</p></details>
+          <details><summary>制御ハザード（分岐）</summary>
+            <p>BEQ の行き先が EX で決まるまで、次に何をフェッチすべきか分かりません。「不成立予測」なら外れたときだけ2命令を取り消し、「停止して待つ」なら毎回2サイクル空きます。</p></details>
+        </div>
+        <p class="foot">キー操作: <span class="kbd">→</span> 進む　<span class="kbd">←</span> 戻る　<span class="kbd">Space</span> 再生／停止</p>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel">
+        <div class="controls">
+          <button class="btn" id="bReset" type="button">⏮ 最初へ</button>
+          <button class="btn" id="bBack" type="button">◀ 戻る</button>
+          <button class="btn primary" id="bStep" type="button">1サイクル進む ▶</button>
+          <button class="btn" id="bPlay" type="button">▶ 再生</button>
+          <span class="clock">サイクル <b id="cyc">0</b> / <span id="cmax">0</span></span>
+          <input type="range" class="scrub" id="scrub" min="0" max="0" value="0" aria-label="サイクル位置">
+          <label class="speed" for="speed">速さ
+            <select id="speed"><option value="1100">ゆっくり</option><option value="650" selected>ふつう</option><option value="280">速い</option></select></label>
+        </div>
+        <div class="stages" id="stages"></div>
+        <div class="latchrow" aria-hidden="true"><span>IF/ID</span><span>ID/EX</span><span>EX/MEM</span><span>MEM/WB</span><span></span></div>
+        <ul class="events" id="events"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>タイミング図 <span style="text-transform:none;letter-spacing:0">縦＝命令 / 横＝サイクル</span></h2>
+        <div class="diag" id="diag"></div>
+        <div class="diag-key">
+          <span><i class="c IF"></i>通常のステージ</span>
+          <span><i class="c stall"></i>ストール（同じ工程で待機）</span>
+          <span><i class="c flush"></i>取り消し（フラッシュ）</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>性能</h2>
+        <div class="stats" id="stats"></div>
+        <div class="compare" id="compare"></div>
+      </section>
+
+      <section class="panel">
+        <h2>レジスタとメモリ</h2>
+        <div class="rm">
+          <div><div class="sub">Registers</div><div class="cells r" id="regs"></div></div>
+          <div><div class="sub">Data memory M[0–60]</div><div class="cells m" id="mem"></div></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

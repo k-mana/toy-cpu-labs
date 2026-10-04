@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>レイテンシ・ラボ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=M+PLUS+1+Code:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="../shared/lab.css">
+<style>
+/* layout: lesson sheet on the left; bench on the right = status + cycle breakdown, listing with per-line cycle heat, cache hierarchy + memory map, pipeline chart, variant comparison, latency ruler */
+:root{
+  --bg:#eceef2; --panel:#fbfbfd; --sunk:#f2f4f7; --ink:#161a24; --muted:#5b6273; --line:#d4d8e0;
+  --cpu:#3d52c4; --mul:#7a4fc0; --brm:#c23c86;
+  --l1:#1d8a6c; --l2:#7e8f12; --l3:#c07410; --dram:#c33b2a;
+  --ok:#1d8a6c; --bad:#c33b2a;
+  --f-display:"DotGothic16","M PLUS 1 Code",ui-monospace,monospace;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --f-mono:"M PLUS 1 Code",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1117; --panel:#151a23; --sunk:#11151d; --ink:#e3e7ef; --muted:#949cae; --line:#272e3b;
+  --cpu:#7d90ff; --mul:#b58dff; --brm:#ff79bd;
+  --l1:#4cc79f; --l2:#c2d24c; --l3:#f2a744; --dram:#ff6c5a; --ok:#4cc79f; --bad:#ff6c5a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1117; --panel:#151a23; --sunk:#11151d; --ink:#e3e7ef; --muted:#949cae; --line:#272e3b;
+  --cpu:#7d90ff; --mul:#b58dff; --brm:#ff79bd;
+  --l1:#4cc79f; --l2:#c2d24c; --l3:#f2a744; --dram:#ff6c5a; --ok:#4cc79f; --bad:#ff6c5a; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.7}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:20px;padding-block:24px 48px}
+@media (max-width:480px){.wrap{padding-inline:16px}}
+h1,h2,h3{margin:0;text-wrap:balance;font-weight:700}
+button,select,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--cpu);outline-offset:2px}
+
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 24px;margin-bottom:16px}
+.top h1{font-family:var(--f-display);font-weight:400;font-size:2.1rem;letter-spacing:.04em;line-height:1.2}
+.top h1 small{font-size:.9rem;color:var(--muted);margin-left:.6em;letter-spacing:.1em}
+.top p{margin:0;color:var(--muted);max-width:62ch;font-size:.92rem}
+
+.lessons{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+.lessons button{display:flex;align-items:center;gap:8px;padding:6px 14px 6px 8px;border:1px solid var(--line);background:var(--panel);border-radius:999px;cursor:pointer;font-size:.9rem}
+.lessons button .n{font-family:var(--f-display);width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:var(--sunk);font-size:.85rem}
+.lessons button[aria-current="true"]{border-color:var(--ink);background:var(--ink);color:var(--panel)}
+.lessons button[aria-current="true"] .n{background:var(--panel);color:var(--ink)}
+
+.layout{display:grid;grid-template-columns:minmax(0,330px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:980px){.layout{grid-template-columns:minmax(0,1fr)}}
+.lesson{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:14px;padding:20px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+@media (max-width:980px){.lesson{position:static}}
+.eyebrow{font-family:var(--f-mono);font-size:.75rem;letter-spacing:.12em;color:var(--muted)}
+.lesson h2{font-size:1.35rem;line-height:1.4}
+.lesson p{margin:0}
+.lesson .body{display:flex;flex-direction:column;gap:10px;font-size:.93rem}
+.lesson h3{font-size:.8rem;letter-spacing:.1em;color:var(--muted);font-weight:500}
+.variants{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.variants button{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;padding:8px 10px;border:1px solid var(--line);background:var(--sunk);border-radius:4px;cursor:pointer;font-family:var(--f-mono);font-size:.85rem}
+.variants button[aria-pressed="true"]{border-color:var(--ink);background:var(--panel);box-shadow:inset 3px 0 0 var(--ink)}
+.variants .cyc{font-size:.72rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tasks{margin:6px 0 0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px;font-size:.9rem}
+.point{font-size:.88rem;padding:10px 12px;background:var(--sunk);border-left:3px solid var(--l3);border-radius:2px}
+
+.bench{display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;min-width:0}
+.ph{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.ph h2{font-size:.95rem}
+.ph .sub{color:var(--muted);font-size:.8rem}
+.note{font-size:.82rem;color:var(--muted);margin:0}
+
+/* status */
+.status{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+.kpis > div{padding:10px 14px;border-right:1px solid var(--line);min-width:0}
+.kpis > div:last-child{border-right:0}
+.kpis .k{font-size:.72rem;color:var(--muted);letter-spacing:.06em}
+.kpis .v{font-family:var(--f-display);font-size:1.5rem;line-height:1.3;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpis .v small{font-size:.8rem;color:var(--muted)}
+.kpis .s{font-size:.72rem;color:var(--muted);font-family:var(--f-mono)}
+@media (max-width:720px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpis > div{border-bottom:1px solid var(--line)}.kpis > div:first-child{grid-column:1/-1}}
+.brk{border-top:1px solid var(--line);padding:10px 14px 12px}
+.stack{display:flex;height:12px;border-radius:2px;overflow:hidden;background:var(--sunk)}
+.stack i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:6px;font-size:.75rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.legend b{color:var(--ink);font-weight:600;font-family:var(--f-mono)}
+.sw{width:12px;height:10px;border-radius:2px;display:inline-block}
+.c-base{background:var(--cpu)} .c-mem{background:var(--dram)} .c-alu{background:var(--mul)} .c-brm{background:var(--brm)}
+
+.machine{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px}
+@media (max-width:1180px){.machine{grid-template-columns:minmax(0,1fr)}}
+
+/* listing */
+.listing{font-family:var(--f-mono);font-size:.8rem;line-height:1.75;background:var(--sunk);border-radius:4px;padding-block:4px;overflow-x:auto}
+.lrow{display:grid;grid-template-columns:20px 24px minmax(max-content,1fr) 44px 84px;align-items:center;padding-right:10px;min-width:max-content}
+.lrow.head{font-size:.66rem;color:var(--muted);border-bottom:1px solid var(--line);margin-bottom:2px;font-family:var(--f-body)}
+.lrow .g{display:flex;justify-content:center}
+.lrow .ln{color:var(--muted);text-align:right;padding-right:10px;font-size:.7rem;opacity:.7}
+.lrow .src{white-space:pre;padding-right:14px}
+.lrow .cnt{text-align:right;color:var(--muted);font-size:.72rem;font-variant-numeric:tabular-nums;padding-right:8px}
+.lrow .heat{display:flex;align-items:center;gap:6px;font-size:.7rem;font-variant-numeric:tabular-nums}
+.lrow .heat i{display:block;height:8px;background:var(--dram);border-radius:1px;min-width:0}
+.lrow .heat span{color:var(--muted);min-width:3.2em;text-align:right;margin-left:auto}
+.lrow.now .src{box-shadow:inset 0 -2px 0 var(--cpu)}
+.pcm{width:16px;height:13px;font-size:.55rem;line-height:13px;text-align:center;color:#fff;background:var(--cpu);font-weight:600;clip-path:polygon(0 0,70% 0,100% 50%,70% 100%,0 100%)}
+.op{font-weight:600} .reg{color:var(--cpu)} .mem{color:var(--l3)} .lbl{color:var(--muted);font-weight:600} .com{color:var(--muted)} .br{color:var(--brm);font-weight:600}
+
+.editor{margin-top:10px}
+.editor summary{cursor:pointer;font-size:.85rem;color:var(--muted)}
+.editor textarea{width:100%;min-height:240px;margin-top:8px;padding:10px;font-family:var(--f-mono);font-size:.8rem;line-height:1.6;background:var(--sunk);border:1px solid var(--line);border-radius:4px;resize:vertical}
+.row-btn{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.err{color:var(--bad);font-size:.85rem}
+
+.hw{display:flex;flex-direction:column;gap:14px;min-width:0}
+.regs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.reg-c{background:var(--sunk);border-radius:3px;padding:4px 6px;text-align:center;font-variant-numeric:tabular-nums;min-width:0}
+.reg-c span{display:block;font-size:.66rem;color:var(--muted);font-family:var(--f-mono)}
+.reg-c b{font-family:var(--f-mono);font-weight:600;font-size:.95rem;display:block;overflow:hidden;text-overflow:ellipsis}
+.reg-c em{display:block;font-style:normal;font-size:.64rem;font-family:var(--f-mono);color:var(--muted);min-height:1.1em}
+.reg-c.wait{box-shadow:inset 0 0 0 1px var(--dram)}
+.reg-c.wait em{color:var(--dram)}
+
+.levels{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.lv{border:1px solid var(--line);border-top:4px solid var(--lc);border-radius:4px;padding:6px 8px;min-width:0}
+.lv .nm{font-family:var(--f-display);font-size:1rem;color:var(--lc)}
+.lv .lt{font-family:var(--f-mono);font-size:.72rem;color:var(--muted)}
+.lv .hc{font-family:var(--f-display);font-size:1.3rem;font-variant-numeric:tabular-nums;line-height:1.3}
+.lv .hp{font-size:.7rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.lv.hit{background:color-mix(in srgb,var(--lc) 14%,transparent)}
+@media (max-width:420px){.levels{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.mapwrap{margin-top:10px}
+#map{width:100%;height:auto;display:block;image-rendering:pixelated;background:var(--sunk);border-radius:3px}
+.mapax{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:.66rem;color:var(--muted);margin-top:3px}
+
+/* controls */
+.controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+.grp{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:7px 14px;border-radius:4px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:.88rem;font-weight:500}
+.btn:hover:not(:disabled){border-color:var(--ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+kbd{font-family:var(--f-mono);font-size:.68rem;padding:0 5px;border-radius:3px;border:1px solid currentColor;opacity:.8}
+.controls label{font-size:.82rem;color:var(--muted)}
+
+.settings summary{cursor:pointer;font-weight:700;font-size:.95rem}
+.cfg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 14px;margin-top:12px}
+.cfg label{display:flex;flex-direction:column;gap:2px;font-size:.78rem;color:var(--muted)}
+.cfg input[type=number]{width:100%;padding:5px 8px;border:1px solid var(--line);border-radius:4px;background:var(--sunk);font-family:var(--f-mono);font-size:.9rem}
+.cfg .chk{flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:.85rem}
+
+/* pipeline chart */
+.gantt{display:flex;flex-direction:column;gap:2px;font-family:var(--f-mono);font-size:.72rem}
+.gr{display:grid;grid-template-columns:minmax(0,170px) minmax(0,1fr) 88px;gap:8px;align-items:center;min-height:20px}
+.gr .gl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.gr .gi{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
+.gr .gi.mis{color:var(--brm)}
+.track{position:relative;height:14px;background:var(--sunk);border-radius:2px}
+.gb{position:absolute;top:2px;bottom:2px;min-width:2px;border-radius:1px}
+.gb.stall{background:repeating-linear-gradient(135deg,var(--line) 0 3px,transparent 3px 6px);top:5px;bottom:5px}
+.gb.k-alu{background:var(--cpu)} .gb.k-mul{background:var(--mul)} .gb.k-br{background:var(--muted)} .gb.k-st{background:var(--muted);opacity:.6}
+.gb.k-l0{background:var(--l1)} .gb.k-l1{background:var(--l2)} .gb.k-l2{background:var(--l3)} .gb.k-l3{background:var(--dram)}
+.gb.mis{background:repeating-linear-gradient(135deg,var(--brm) 0 3px,transparent 3px 5px)}
+.gaxis .track{background:none;height:16px;border-bottom:1px solid var(--line)}
+.gaxis .tick{position:absolute;bottom:2px;transform:translateX(-50%);color:var(--muted);font-size:.64rem;white-space:nowrap}
+.gaxis .tick.l{transform:none} .gaxis .tick.r{transform:translateX(-100%)}
+@media (max-width:560px){.gr{grid-template-columns:minmax(0,96px) minmax(0,1fr) 64px}}
+.gkey{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:.74rem;color:var(--muted)}
+.gkey span{display:inline-flex;align-items:center;gap:6px}
+
+.lower{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+@media (max-width:900px){.lower{grid-template-columns:minmax(0,1fr)}}
+.cmp{display:flex;flex-direction:column;gap:12px}
+.cmp .it{display:flex;flex-direction:column;gap:4px}
+.cmp .top2{display:flex;justify-content:space-between;gap:8px;font-size:.85rem;flex-wrap:wrap}
+.cmp .top2 b{font-family:var(--f-mono);font-weight:600}
+.cmp .top2 span{font-family:var(--f-mono);font-size:.8rem;font-variant-numeric:tabular-nums;color:var(--muted)}
+.cmp .top2 span strong{color:var(--ink);font-weight:600}
+.cmp .it.cur .top2 b::before{content:"▸ ";color:var(--cpu)}
+
+.ruler{display:flex;flex-direction:column;gap:5px}
+.rr{display:grid;grid-template-columns:minmax(0,11.5em) minmax(0,1fr) minmax(0,6.6em);gap:8px;align-items:center;font-size:.8rem}
+.rr .rn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rr .rb{height:10px;background:var(--sunk);border-radius:1px;position:relative}
+.rr .rb i{position:absolute;left:0;top:0;bottom:0;border-radius:1px;background:var(--rc,var(--muted))}
+.rr .rh{font-family:var(--f-mono);font-size:.74rem;text-align:right;white-space:nowrap}
+.rr .rt{font-family:var(--f-mono);font-size:.68rem;color:var(--muted);display:block}
+.rr.head{font-size:.7rem;color:var(--muted)}
+.rr.sep{border-top:1px dashed var(--line);padding-top:5px}
+
+.isa summary{cursor:pointer;font-weight:700;font-size:.95rem}
+.tbl{overflow-x:auto;margin-top:10px}
+.tbl table{border-collapse:collapse;font-size:.83rem;width:100%}
+.tbl th,.tbl td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font-size:.72rem;color:var(--muted);font-weight:500;letter-spacing:.06em}
+.tbl td:first-child{font-family:var(--f-mono);white-space:nowrap}
+.tbl td:nth-child(2){font-family:var(--f-mono);white-space:nowrap}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+
+.isa a{color:var(--cpu)}
+.labnav{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="labnav" aria-label="サイト内"><a href="../../">← 仮想CPU ラボ</a><a href="../../reference/">命令セット一覧</a><a href="../../docs/">ドキュメント</a></nav>
+
+  <header class="top">
+    <h1>レイテンシ・ラボ<small>構成 LT-1</small></h1>
+    <p>キャッシュ・パイプライン・分岐予測を持つ仮想CPUでプログラムを動かし、どの命令が何サイクル待たされているのかを1命令ずつ確かめます。</p>
+  </header>
+
+  <nav class="lessons" id="lessonNav" aria-label="レッスン"></nav>
+
+  <div class="layout">
+    <aside class="lesson" id="lessonCard"></aside>
+
+    <main class="bench">
+      <section class="status" aria-live="polite">
+        <div class="kpis" id="kpis"></div>
+        <div class="brk"><div class="stack" id="stack"></div><div class="legend" id="stackLegend"></div></div>
+      </section>
+
+      <div class="machine">
+        <section class="panel">
+          <div class="ph"><h2>プログラム</h2><span class="sub">右端 = その行で費やしたサイクルの割合</span></div>
+          <div class="listing" id="listing"></div>
+          <details class="editor" id="editor">
+            <summary>コードを編集する</summary>
+            <textarea id="codeArea" spellcheck="false" aria-label="アセンブリコード"></textarea>
+            <div class="row-btn">
+              <button class="btn primary" id="applyBtn">読み込んで最初から実行</button>
+              <button class="btn" id="revertBtn">元のコードに戻す</button>
+              <span class="err" id="asmErr"></span>
+            </div>
+          </details>
+        </section>
+
+        <div class="hw">
+          <section class="panel">
+            <div class="ph"><h2>レジスタ</h2><span class="sub">赤枠 = 値がまだ届いていない（あと何サイクル）</span></div>
+            <div class="regs" id="regs"></div>
+          </section>
+          <section class="panel">
+            <div class="ph"><h2>メモリ階層</h2><span class="sub">ロードがどこで見つかったか</span></div>
+            <div class="levels" id="levels"></div>
+            <div class="mapwrap">
+              <canvas id="map" width="512" height="256" aria-label="メモリマップ。1マス = 1キャッシュライン（64バイト）。色はそのラインが今どのキャッシュにあるか"></canvas>
+              <div class="mapax"><span>0x00000</span><span>1マス = 1ライン（16語 = 64B）· 1行 = 128ライン</span><span>0x7FFFF</span></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <section class="panel controls">
+        <div class="grp">
+          <button class="btn primary" id="stepBtn">1命令 <kbd>Space</kbd></button>
+          <button class="btn" id="step100Btn">100命令 <kbd>N</kbd></button>
+          <button class="btn" id="autoBtn">自動実行</button>
+          <button class="btn" id="endBtn">最後まで <kbd>E</kbd></button>
+          <button class="btn" id="resetBtn">リセット <kbd>R</kbd></button>
+        </div>
+        <div class="grp">
+          <label for="speed">速度</label>
+          <select id="speed"><option value="slow">ゆっくり</option><option value="mid" selected>ふつう</option><option value="fast">速い</option></select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="ph"><h2>パイプライン</h2><span class="sub" id="ganttSub">直近の命令。横軸 = サイクル</span></div>
+        <div class="gantt" id="gantt"></div>
+        <div class="gkey">
+          <span><i class="sw" style="background:repeating-linear-gradient(135deg,var(--muted) 0 2px,transparent 2px 4px)"></i>発行待ち（ストール）</span>
+          <span><i class="sw" style="background:var(--cpu)"></i>ALU</span>
+          <span><i class="sw" style="background:var(--mul)"></i>MUL / DIV</span>
+          <span><i class="sw" style="background:var(--l1)"></i>L1</span>
+          <span><i class="sw" style="background:var(--l2)"></i>L2</span>
+          <span><i class="sw" style="background:var(--l3)"></i>L3</span>
+          <span><i class="sw" style="background:var(--dram)"></i>DRAM</span>
+          <span><i class="sw" style="background:repeating-linear-gradient(135deg,var(--brm) 0 2px,transparent 2px 4px)"></i>分岐予測ミス</span>
+        </div>
+      </section>
+
+      <div class="lower">
+        <section class="panel">
+          <div class="ph"><h2>プログラムの比較</h2><span class="sub" id="cmpSub">現在の設定で最後まで実行した結果</span></div>
+          <div class="cmp" id="cmp"></div>
+        </section>
+        <section class="panel">
+          <div class="ph"><h2>レイテンシの物差し</h2><span class="sub" id="rulerSub"></span></div>
+          <div class="ruler" id="ruler"></div>
+          <p class="note" style="margin-top:10px">上の段はこの仮想CPUの設定値。下の段は実機でよく引用される目安で、機種や環境で数倍は変わります。</p>
+        </section>
+      </div>
+
+      <details class="panel settings" id="settings">
+        <summary>ハードウェア設定</summary>
+        <div class="cfg">
+          <label for="cfgL1">L1 レイテンシ<input type="number" id="cfgL1" min="1" max="1000"></label>
+          <label for="cfgL2">L2 レイテンシ<input type="number" id="cfgL2" min="1" max="1000"></label>
+          <label for="cfgL3">L3 レイテンシ<input type="number" id="cfgL3" min="1" max="2000"></label>
+          <label for="cfgDram">DRAM レイテンシ<input type="number" id="cfgDram" min="1" max="5000"></label>
+          <label for="cfgMul">MUL レイテンシ<input type="number" id="cfgMul" min="1" max="100"></label>
+          <label for="cfgDiv">DIV レイテンシ<input type="number" id="cfgDiv" min="1" max="200"></label>
+          <label for="cfgPen">分岐予測ミスの罰則<input type="number" id="cfgPen" min="0" max="200"></label>
+          <label for="cfgMshr">同時に出せるミス数（MSHR）<input type="number" id="cfgMshr" min="1" max="64"></label>
+          <label for="cfgGhz">クロック（GHz）<input type="number" id="cfgGhz" min="0.1" max="10" step="0.1"></label>
+          <label class="chk" for="cfgPf"><input type="checkbox" id="cfgPf">次ラインプリフェッチャ</label>
+        </div>
+        <div class="row-btn"><button class="btn" id="cfgReset">初期値に戻す</button><span class="note">単位はサイクル。変更すると最初から実行し直します。</span></div>
+      </details>
+
+      <details class="panel isa">
+        <summary>LT-1 構成の仕組みと命令のレイテンシ</summary>
+        <div class="body" style="display:flex;flex-direction:column;gap:8px;margin-top:10px;font-size:.88rem;max-width:72ch">
+          <p style="margin:0">1サイクルに1命令を、プログラムの順番どおりに発行します（in-order）。命令はオペランドのレジスタに値が届くまで発行を待ち、その間は後ろの命令もすべて止まります。ロードは完了を待たずに次の命令へ進み、結果を使う命令が来たときに初めて待ちます。</p>
+          <p style="margin:0">キャッシュはライン単位（16語 = 64バイト）、LRU 置き換え。容量は L1 64ライン（4KB）、L2 512ライン（32KB）、L3 2048ライン（128KB）で、実機より小さくしてあります。メモリは 1MB。分岐予測は分岐ごとの2ビット飽和カウンタです。命令は TOY 命令セット（<a href="../../reference/">一覧</a>）で、計算はシミュレータ本体の InOrderModel が行います。</p>
+          <p style="margin:0">実際の高性能CPUは out-of-order 実行で数百命令先まで独立した仕事を探すため、ここで手で並べ替えている効果の多くを自動で得ます。それでも依存チェーンとポインタ追跡だけは隠せません。</p>
+        </div>
+        <div class="tbl"><table>
+          <thead><tr><th>命令</th><th>レイテンシ</th><th>動作</th></tr></thead>
+          <tbody>
+            <tr><td>LI / MOV / ADD / ADDI / SUB / AND / ANDI / SLT / SLTI / SLLI …</td><td>1</td><td>整数演算 (r0 は常に 0)</td></tr>
+            <tr><td>MUL rd, rs, rt</td><td>3</td><td>乗算。パイプライン化されており毎サイクル投入できる</td></tr>
+            <tr><td>DIV / REM rd, rs, rt</td><td>20</td><td>除算。パイプライン化されておらず、前の DIV が終わるまで次を始められない</td></tr>
+            <tr><td>LW rd, off(rs)</td><td>4 / 12 / 40 / 200</td><td>メモリから読む。見つかった階層（L1 / L2 / L3 / DRAM）で時間が決まる</td></tr>
+            <tr><td>SW rt, off(rs)</td><td>1</td><td>メモリへ書く（書き込みバッファに入るので待たない）</td></tr>
+            <tr><td>BEQ / BNE / BLT / BGE / BNEZ rs, rt, label</td><td>1（外れると +15）</td><td>条件が成り立てば label へ</td></tr>
+            <tr><td>J label · NOP · HALT</td><td>1</td><td>無条件ジャンプ、何もしない、停止</td></tr>
+          </tbody>
+        </table></div>
+      </details>
+    </main>
+  </div>
+</div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
